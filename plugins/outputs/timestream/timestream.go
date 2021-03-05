@@ -6,7 +6,6 @@ import (
 	"hash/fnv"
 	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -48,11 +47,6 @@ type (
 		CreateTableMemoryStoreRetentionPeriodInHours  int64             `toml:"create_table_memory_store_retention_period_in_hours"`
 		CreateTableTags                               map[string]string `toml:"create_table_tags"`
 
-		ReplaceColon             bool              `toml:"replace_colon"`
-		RemoveTrailingUnderScore bool              `toml:"remove_trailing_underscore"`
-		ReplaceMeasureName       map[string]string `toml:"replace_measure_name"`
-		ReplaceDimensionName     map[string]string `toml:"replace_dimension_name"`
-		ReplaceTableName         map[string]string  `toml:"replace_table_name`
 		Log telegraf.Logger
 		svc WriteClient
 	}
@@ -425,7 +419,7 @@ func (t *Timestream) logWriteToTimestreamError(err error, tableName *string) {
 }
 
 func (t *Timestream) createTableAndRetry(writeRecordsInput *timestreamwrite.WriteRecordsInput) error {
-	var tableName = t.replaceTableName(*writeRecordsInput.TableName)
+	var tableName = *writeRecordsInput.TableName
 	if t.CreateTableIfNotExists {
 		t.Log.Infof("Trying to create table '%s' in database '%s', as 'CreateTableIfNotExists' config key is 'true'.", tableName, t.DatabaseName)
 		if err := t.createTable(tableName); err != nil {
@@ -494,7 +488,7 @@ func (t *Timestream) TransformMetrics(metrics []telegraf.Metric) []*timestreamwr
 		}
 
 		if t.MappingMode == MappingModeMultiTable {
-			tableName = t.replaceTableName(m.Name())
+			tableName = m.Name()
 		}
 
 		if curr, ok := writeRequests[tableName]; !ok {
@@ -552,55 +546,11 @@ func hashFromMetricTimeNameTagKeys(m telegraf.Metric) uint64 {
 	return h.Sum64()
 }
 
-func (t *Timestream) replaceTableName(name string) string {
-	if len(t.ReplaceTableName) > 0 {
-		for oldVal, newVal := range t.ReplaceTableName {
-			if name == oldVal {
-				name = newVal
-			}
-		}
-	}
-	name = strings.ReplaceAll(name, ":", "_")
-	return name
-}
-
-func (t *Timestream) replaceMeasureName(name string) string {
-	if len(t.ReplaceMeasureName) > 0 {
-		for oldVal, newVal := range t.ReplaceMeasureName {
-			if name == oldVal {
-				name = newVal
-			}
-		}
-	}
-
-	if t.ReplaceColon {
-		name = strings.ReplaceAll(name, ":", "_")
-	}
-
-	return name
-}
-
-func (t *Timestream) replaceDimensionName(name string) string {
-	if len(t.ReplaceDimensionName) > 0 {
-		for oldVal, newVal := range t.ReplaceDimensionName {
-			if name == oldVal {
-				name = newVal
-			}
-		}
-	}
-
-	if t.RemoveTrailingUnderScore {
-		name = strings.TrimSuffix(name, "_")
-	}
-
-	return name
-}
-
 func (t *Timestream) buildDimensions(point telegraf.Metric) []*timestreamwrite.Dimension {
 	var dimensions []*timestreamwrite.Dimension
 	for tagName, tagValue := range point.Tags() {
 		dimension := &timestreamwrite.Dimension{
-			Name:  aws.String(t.replaceDimensionName(tagName)),
+			Name:  aws.String(tagName),
 			Value: aws.String(tagValue),
 		}
 		dimensions = append(dimensions, dimension)
@@ -635,7 +585,7 @@ func (t *Timestream) buildWriteRecords(point telegraf.Metric) []*timestreamwrite
 		timeUnit, timeValue := getTimestreamTime(point.Time())
 
 		record := &timestreamwrite.Record{
-			MeasureName:      aws.String(t.replaceMeasureName(fieldName)),
+			MeasureName:      aws.String(fieldName),
 			MeasureValueType: aws.String(stringFieldValueType),
 			MeasureValue:     aws.String(stringFieldValue),
 			Dimensions:       dimensions,

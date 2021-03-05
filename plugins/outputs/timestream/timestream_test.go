@@ -165,17 +165,9 @@ func TestConnectValidatesConfigParameters(t *testing.T) {
 	}
 	assertions.Contains(describeTableInvoked.Connect().Error(), "hello from DescribeDatabase")
 
-	// replacement arguments
-	replacementMap := map[string]string{"old1": "new1", "old2": "new2"}
-
 	replacementValid := ts.Timestream{
 		DatabaseName:            tsDbName,
 		MappingMode:             ts.MappingModeMultiTable,
-		ReplaceColon:            true,
-		RemoveTrailingUnderScore:true,
-		ReplaceMeasureName:      replacementMap,
-		ReplaceDimensionName:    replacementMap,
-		ReplaceTableName:        replacementMap,
 		Log:                     testutil.Logger{},
 	}
 	assertions.Nil(replacementValid.Connect())
@@ -761,72 +753,6 @@ func TestTransformMetricsDifferentMetricsAreWrittenToDifferentTablesInMultiTable
 		[]*timestreamwrite.WriteRecordsInput{expectedResult1MultiTable, expectedResult2MultiTable})
 }
 
-func TestReplaceMeasureDimensionNames(t *testing.T) {
-	input1 := testutil.MustMetric(
-		metricName1,
-		map[string]string{"tag1_": "value1"},
-		map[string]interface{}{
-			"value:1": float64(10),
-		},
-		time1,
-	)
-
-	input2 := testutil.MustMetric(
-		metricName1,
-		map[string]string{"replaceDim2": "value2"},
-		map[string]interface{}{
-			"replaceMeasure2": float64(10),
-		},
-		time1,
-	)
-
-	input3 := testutil.MustMetric(
-		metricName1,
-		map[string]string{"replaceDim3_": "value3"},
-		map[string]interface{}{
-			"replaceMeasure:3": float64(10),
-		},
-		time1,
-	)
-
-	recordsSingle := buildRecords([]SimpleInput{
-		SimpleInput{
-			t:             time1Epoch,
-			tableName:     testSingleTableName,
-			dimensions:    map[string]string{"tag1": "value1", testSingleTableDim: metricName1},
-			measureValues: map[string]string{"value_1": "10"},
-		}, 
-		SimpleInput{
-			t:             time1Epoch,
-			tableName:     testSingleTableName,
-			dimensions:    map[string]string{"tag2": "value2", testSingleTableDim: metricName1},
-			measureValues: map[string]string{"value2": "10"},
-		},
-		SimpleInput{
-			t:             time1Epoch,
-			tableName:     testSingleTableName,
-			dimensions:    map[string]string{"tag3": "value3", testSingleTableDim: metricName1},
-			measureValues: map[string]string{"value_3": "10"},
-		},
-	})
-
-	expectedResultSingleTable := &timestreamwrite.WriteRecordsInput{
-		DatabaseName: aws.String(tsDbName),
-		TableName:    aws.String(testSingleTableName),
-		Records:      recordsSingle,
-		CommonAttributes: &timestreamwrite.Record{},
-	}
-
-	dimReplacement := map[string]string{"replaceDim": "tag"}
-	measureReplacement := map[string]string{"replaceMeasure": "value"}
-
-	comparisonTestForReplacement(t,
-		dimReplacement,
-		measureReplacement,
-		[]telegraf.Metric{input1, input2, input3},
-		[]*timestreamwrite.WriteRecordsInput{expectedResultSingleTable})
-}
-
 func TestTransformMetricsUnsupportedFieldsAreSkipped(t *testing.T) {
 	metricWithUnsupportedField := testutil.MustMetric(
 		metricName1,
@@ -883,28 +809,6 @@ func comparisonTest(t *testing.T,
 		}
 	}
 	comparison(t, plugin, mappingMode, telegrafMetrics, timestreamRecords)
-}
-
-func comparisonTestForReplacement(t *testing.T,
-	replaceDimension map[string]string,
-	replaceMeasure map[string]string,
-	telegrafMetrics []telegraf.Metric,
-	timestreamRecords []*timestreamwrite.WriteRecordsInput) {
-
-	var plugin ts.Timestream
-	plugin = ts.Timestream{
-		MappingMode:  ts.MappingModeSingleTable,
-		DatabaseName: tsDbName,
-
-		SingleTableName: testSingleTableName,
-		SingleTableDimensionNameForTelegrafMeasurementName: testSingleTableDim,
-		ReplaceColon: true,
-		RemoveTrailingUnderScore: true,
-		ReplaceMeasureName: replaceMeasure,
-		ReplaceDimensionName: replaceDimension,
-		Log: testutil.Logger{},
-	}
-	comparison(t, plugin, ts.MappingModeSingleTable, telegrafMetrics, timestreamRecords)
 }
 
 func comparison(t *testing.T,
